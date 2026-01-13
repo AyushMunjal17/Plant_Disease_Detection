@@ -1,8 +1,10 @@
 import io
+import os
 from pathlib import Path
 from typing import Tuple
 
 import numpy as np
+import requests
 import streamlit as st
 import tensorflow as tf
 from PIL import Image
@@ -58,12 +60,36 @@ MODEL_PATH = Path("trained_model.keras")
 IMAGE_SIZE = (128, 128)
 
 
+def resolve_model_url() -> str | None:
+    if "MODEL_URL" in st.secrets:
+        return st.secrets["MODEL_URL"]
+    return os.getenv("MODEL_URL")
+
+
+def download_model_if_needed() -> None:
+    if MODEL_PATH.exists():
+        return
+
+    model_url = resolve_model_url()
+    if not model_url:
+        raise FileNotFoundError(
+            f"Trained model file not found at {MODEL_PATH.resolve()} and "
+            "no MODEL_URL secret/environment variable provided."
+        )
+
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    response = requests.get(model_url, timeout=60, stream=True)
+    response.raise_for_status()
+
+    with open(MODEL_PATH, "wb") as fh:
+        for chunk in response.iter_content(chunk_size=1024 * 1024):
+            if chunk:
+                fh.write(chunk)
+
+
 @st.cache_resource(show_spinner="Loading trained model...")
 def load_model() -> tf.keras.Model:
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(
-            f"Trained model file not found at {MODEL_PATH.resolve()}."
-        )
+    download_model_if_needed()
     return tf.keras.models.load_model(MODEL_PATH)
 
 
