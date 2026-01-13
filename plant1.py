@@ -2,6 +2,7 @@ import io
 import os
 from pathlib import Path
 from typing import Tuple
+from urllib.parse import parse_qsl, urlparse
 
 import numpy as np
 import requests
@@ -66,6 +67,20 @@ def resolve_model_url() -> str | None:
     return os.getenv("MODEL_URL")
 
 
+def _split_url_and_params(url: str) -> tuple[str, dict[str, str]]:
+    parsed = urlparse(url)
+    base_url = parsed._replace(query="", fragment="").geturl()
+    params = {key: value for key, value in parse_qsl(parsed.query)}
+    return base_url, params
+
+
+def _extract_confirm_token(response: requests.Response) -> str | None:
+    for key, value in response.cookies.items():
+        if key.startswith("download_warning") or key == "confirm":
+            return value
+    return None
+
+
 def download_model_if_needed() -> None:
     if MODEL_PATH.exists():
         return
@@ -77,14 +92,24 @@ def download_model_if_needed() -> None:
             "no MODEL_URL secret/environment variable provided."
         )
 
+    base_url, params = _split_url_and_params(model_url)
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    response = requests.get(model_url, timeout=60, stream=True)
-    response.raise_for_status()
 
-    with open(MODEL_PATH, "wb") as fh:
-        for chunk in response.iter_content(chunk_size=1024 * 1024):
-            if chunk:
-                fh.write(chunk)
+    with requests.Session() as session:
+        response = session.get(base_url, params=params, timeout=120, stream=True)
+        response.raise_for_status()
+
+        token = _extract_confirm_token(response)
+        if token:
+            params = params.copy()
+            params["confirm"] = token
+            response = session.get(base_url, params=params, timeout=120, stream=True)
+            response.raise_for_status()
+
+        with open(MODEL_PATH, "wb") as fh:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    fh.write(chunk)
 
 
 @st.cache_resource(show_spinner="Loading trained model...")
