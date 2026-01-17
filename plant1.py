@@ -58,13 +58,17 @@ CLASS_NAMES = [
 ]
 
 MODEL_PATH = Path("trained_model.keras")
+DEFAULT_MODEL_URL = (
+    "https://www.dropbox.com/scl/fi/30y4d6p1vgrfx8c6x8d0t/"
+    "trained_model.keras?rlkey=d2kjuvsohsdt4u3qjdwtlm9fo&st=cc30qkt6&dl=1"
+)
 IMAGE_SIZE = (128, 128)
 
 
 def resolve_model_url() -> str | None:
     if "MODEL_URL" in st.secrets:
         return st.secrets["MODEL_URL"]
-    return os.getenv("MODEL_URL")
+    return os.getenv("MODEL_URL", DEFAULT_MODEL_URL)
 
 
 def _split_url_and_params(url: str) -> tuple[str, dict[str, str]]:
